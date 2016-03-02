@@ -1,0 +1,35 @@
+package com.hoan.dsensor_master;
+
+/**
+ *
+ * Created by Hoan on 2/28/2016.
+ */
+public class DProcessedSensor {
+
+    /**
+     * This type returns the angle between the magnetic north and the projection
+     * of the axis starting from the lower left corner to the upper left corner
+     * of the device.
+     * In case of the device natural orientation i.e Portrait for phone and Landscape
+     * for tablet, this value is the value[0] of getOrientation of the SDK SensorManager class.
+     * However, this type also returns the correct direction independent of type of devices
+     * as well as declared screen orientation of the activity. For example for tablet and
+     * the activity is in Portrait only, the value return is either the direction of the
+     * X-axis or minus X-axis depending on the manufacturer. If the activity does not set
+     * orientation preference then when the activity started the direction is the direction
+     * of the axis parallel to where the user looks.
+     * Thus for a compass app, all you need to do is to call DSensorManager.startDProcessedSensor
+     * passing in this type.
+     * The value for this sensor will be from -PI to PI when the device is flat and Float.NAN otherwise.
+     */
+    public static final int TYPE_COMPASS_FLAT_ONLY = 1;
+
+    /**
+     * This is like TYPE_COMPASS_FLAT_ONLY except that when the device
+     * is not flat, the value return will be the direction of the device
+     * minus z-axis (the direction of the back camera) instead of Float.NAN
+     */
+    public static final int TYPE_COMPASS = 2;
+
+    public static final int ERROR_UNSUPPORTED_TYPE = -1;
+}
