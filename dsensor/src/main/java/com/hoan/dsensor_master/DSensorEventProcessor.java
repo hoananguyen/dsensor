@@ -5,6 +5,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 
 import com.hoan.dsensor_master.interfaces.DSensorEventListener;
 import com.hoan.dsensor_master.utils.DMath;
@@ -89,6 +91,7 @@ public class DSensorEventProcessor implements SensorEventListener {
     private final int mHasTypeLinearAcceleration;
 
     private final DSensorEventListener mDSensorEventListener;
+    private final Handler mUIHandler = new Handler(Looper.getMainLooper());
 
     /**
      * Constructor
@@ -190,9 +193,9 @@ public class DSensorEventProcessor implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "onSensorChanged");
-        DProcessedSensorEvent.DProcessedSensorEventBuilder builder
+        final DProcessedSensorEvent.DProcessedSensorEventBuilder builder
                 = new DProcessedSensorEvent.DProcessedSensorEventBuilder();
-        int changedSensorTypes = 0;
+        final int changedSensorTypes;
         int sensorType = event.sensor.getType();
         if (sensorType == Sensor.TYPE_ACCELEROMETER) {
             changedSensorTypes = onAccelerometerChanged(event, builder);
@@ -200,9 +203,8 @@ public class DSensorEventProcessor implements SensorEventListener {
             changedSensorTypes = onGyroscopeChanged(event, builder);
         } else if (sensorType == Sensor.TYPE_MAGNETIC_FIELD) {
             changedSensorTypes = onMagneticFieldChanged(event, builder);
-        } else //noinspection deprecation
-            if (sensorType == Sensor.TYPE_ORIENTATION) {
-                changedSensorTypes = onOrientationChanged(event, builder);
+        } else if (sensorType == Sensor.TYPE_ORIENTATION) {
+            changedSensorTypes = onOrientationChanged(event, builder);
         } else if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO) {
             if (sensorType == Sensor.TYPE_GRAVITY) {
                 changedSensorTypes = onGravityChanged(event, builder);
@@ -210,10 +212,20 @@ public class DSensorEventProcessor implements SensorEventListener {
                 changedSensorTypes = onLinearAccelerationChanged(event, builder);
             } else if (sensorType == Sensor.TYPE_ROTATION_VECTOR) {
                 changedSensorTypes = onRotationVectorChanged(event, builder);
+            } else {
+                changedSensorTypes = 0;
             }
+        } else {
+            changedSensorTypes = 0;
         }
+
         if (changedSensorTypes != 0) {
-            mDSensorEventListener.onDSensorChanged(changedSensorTypes, builder.build());
+            mUIHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    mDSensorEventListener.onDSensorChanged(changedSensorTypes, builder.build());
+                }
+            });
         }
     }
 
