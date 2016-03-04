@@ -102,6 +102,9 @@ public class DSensorManager {
             case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY:
                 return onTypeCompassFlatOnlyRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener);
 
+            case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY_AND_DEPRECIATED_ORIENTATION:
+                return onTypeCompassFlatOnlyAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
+
             default:
                 return DProcessedSensor.ERROR_UNSUPPORTED_TYPE;
         }
@@ -351,6 +354,40 @@ public class DSensorManager {
                         dProcessedEventListener.onProcessedValueChanged(
                                 new DSensorEvent(DProcessedSensor.TYPE_COMPASS_FLAT_ONLY, result.accuracy,
                                         result.timestamp, result.values));
+                    }
+                });
+    }
+
+    private static int onTypeCompassFlatOnlyAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
+                                                                   final DProcessedEventListener dProcessedEventListener) {
+        final int dSensorDirectionTypes = getCompassDirectionType(context) | DSensor.TYPE_DEPRECIATED_ORIENTATION;
+        Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassFlatOnlyAndOrientationRegister dSensorDirectionTypes = " + dSensorDirectionTypes);
+        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+                new DSensorEventListener() {
+                    @Override
+                    public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
+                        DSensorEvent result;
+                        if ((changedDSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) == 0) {
+                            if ((changedDSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) == 0) {
+                                if ((changedDSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) == 0) {
+                                    if ((changedDSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) == 0) {
+                                        result = processedSensorEvent.minusXAxisDirection;
+                                    } else {
+                                        result = processedSensorEvent.xAxisDirection;
+                                    }
+                                } else {
+                                    result = processedSensorEvent.minusYAxisDirection;
+                                }
+                            } else {
+                                result = processedSensorEvent.yAxisDirection;
+                            }
+                        } else {
+                            result = processedSensorEvent.depreciatedOrientation;
+                        }
+                        dProcessedEventListener.onProcessedValueChanged(
+                                new DSensorEvent(result.sensorType == DSensor.TYPE_DEPRECIATED_ORIENTATION
+                                        ? DSensor.TYPE_DEPRECIATED_ORIENTATION : DProcessedSensor.TYPE_COMPASS,
+                                        result.accuracy, result.timestamp, result.values));
                     }
                 });
     }
