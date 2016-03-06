@@ -631,10 +631,12 @@ public class DSensorEventProcessor implements SensorEventListener {
             Logger.d(DirectionHistory.class.getSimpleName(), "add size = " + mHistories.size());
             mHistoryTimeStampSum += item.timestamp;
             if (mHistories.size() == mHistoryMaxSize) {
-                mHistoryTimeStampSum -= mHistories.removeFirst().timestamp;
+                DSensorEvent firstTerm = mHistories.removeFirst();
+                mHistoryTimeStampSum -= firstTerm.timestamp;
+                DMath.removeAngle(firstTerm.values[0], mHistoriesSum);
             }
             mHistories.addLast(item);
-            DMath.sumOfAngles(mHistories, mHistoriesSum, mHistoryMaxSize);
+            DMath.addAngle(item.values[0], mHistoriesSum);
         }
 
         public DSensorEvent getAverageSensorEvent(int sensorType) {

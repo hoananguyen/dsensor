@@ -22,16 +22,14 @@ public class DMath {
         return (float) Math.sqrt(norm);
     }
 
-    public static void sumOfAngles(LinkedList<DSensorEvent> terms, float[] currentSum, int maxTerm) {
-        int totalTerms = terms.size();
-        if (totalTerms > maxTerm) {
-            float firstTerm = terms.removeFirst().values[0];
-            currentSum[0] -= Math.sin(firstTerm);
-            currentSum[1] -= Math.cos(firstTerm);
-        }
-        float lastTerm = terms.getLast().values[0];
-        currentSum[0] += Math.sin(lastTerm);
-        currentSum[1] += Math.cos(lastTerm);
+    public static void addAngle(float angle, float[] currentSum) {
+        currentSum[0] += Math.sin(angle);
+        currentSum[1] += Math.cos(angle);
+    }
+
+    public static void removeAngle(float angle, float[] currentSum) {
+        currentSum[0] -= Math.sin(angle);
+        currentSum[1] -= Math.cos(angle);
     }
 
     public static float averageAngle(float[] currentSum, int totalTerms) {
