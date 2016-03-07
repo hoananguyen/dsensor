@@ -1,5 +1,6 @@
 package com.hoan.dsensor_master;
 
+import android.annotation.TargetApi;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -20,7 +21,7 @@ import java.util.LinkedList;
  */
 public class DSensorEventProcessor implements SensorEventListener {
 
-    public static  final int DEFAULT_HISTORY_SIZE = 40;
+    public static  final int DEFAULT_HISTORY_SIZE = 20;
 
     private static final float TWENTY_FIVE_DEGREE_IN_RADIAN = 0.436332313f;
     private static final float ONE_FIFTY_FIVE_DEGREE_IN_RADIAN = 2.7052603f;
@@ -61,7 +62,7 @@ public class DSensorEventProcessor implements SensorEventListener {
     /**
      *  The type of sensor to listen to. See DSensor.
      */
-    private final int mSensorType;
+    private final int mDSensorTypes;
 
     /**
      * For DSensor types that required Rotation Matrix
@@ -76,6 +77,12 @@ public class DSensorEventProcessor implements SensorEventListener {
     private final boolean mProcessData;
 
     private final boolean mCalculateInclination;
+
+    /**
+     * Flag to indicate device has TYPE_ROTATION_VECTOR. If value is HAS_TYPE_ROTATION_VECTOR then
+     * all calculation is done when onSensorChanged is of TYPE_ROTATION_VECTOR.
+     */
+    private final int mHasTypeRotationVector;
 
     /**
      * Flag to indicate device has TYPE_GRAVITY. If needed and the value is
@@ -94,27 +101,35 @@ public class DSensorEventProcessor implements SensorEventListener {
     private final Handler mUIHandler = new Handler(Looper.getMainLooper());
 
     /**
-     * Constructor
-     * @param sensorType see DSensor
-     * @param historyMaxLength maximum list length to keep history
-     * @param hasTypeGravity See mHasTypeGravity
-     * @param hasTypeLinearAcceleration See mHasTypeLinearAcceleration
-     * @param dSensorEventListener callback for processed values
+     * Constructor.
+     * @param dSensorTypes Bitwise OR of DSensor types.
+     * @param historyMaxLength Maximum list length to keep history.
+     * @param hasTypeRotationVector one of the flag HAS_TYPE_ROTATION_VECTOR,
+     *                              TYPE_ROTATION_VECTOR_NOT_NEEDED or
+     *                              TYPE_ROTATION_VECTOR_NOT_AVAILABLE.
+     * @param hasTypeGravity one of the flag HAS_TYPE_GRAVITY,
+     *                       TYPE_GRAVITY_NOT_NEEDED or
+     *                       TYPE_GRAVITY_NOT_AVAILABLE.
+     * @param hasTypeLinearAcceleration one of the flag HAS_TYPE_LINEAR_ACCELERATION,
+     *                                  TYPE_LINEAR_ACCELERATION_NOT_NEEDED or
+     *                                  TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE.
+     * @param dSensorEventListener Callback for processed values
      */
-    public DSensorEventProcessor(int sensorType, int historyMaxLength, int hasTypeGravity,
+    public DSensorEventProcessor(int dSensorTypes, int historyMaxLength, int hasTypeRotationVector, int hasTypeGravity,
                                  int hasTypeLinearAcceleration, DSensorEventListener dSensorEventListener) {
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "constructor(" + sensorType + ", " + historyMaxLength
-                + ", " + hasTypeGravity + ", " + hasTypeLinearAcceleration + ")");
-        mSensorType = sensorType;
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "constructor(" + dSensorTypes + ", " + historyMaxLength
+                + ", " + hasTypeRotationVector + ", " + hasTypeGravity + ", " + hasTypeLinearAcceleration + ")");
+        mDSensorTypes = dSensorTypes;
         mDSensorEventListener = dSensorEventListener;
+        mHasTypeRotationVector = hasTypeRotationVector;
         mHasTypeGravity = hasTypeGravity;
         mHasTypeLinearAcceleration = hasTypeLinearAcceleration;
         boolean hasDirectionMember = initDirectionHistoryMembers(historyMaxLength);
         mProcessDataWithRotationMatrix = initWorldHistoryMembers(historyMaxLength) || hasDirectionMember;
-        mCalculateInclination = (mSensorType & DSensor.TYPE_INCLINATION) != 0
-                || (mSensorType & DSensor.TYPE_DEVICE_ROTATION) != 0 || hasDirectionMember;
-        mProcessData = mCalculateInclination || (mSensorType & DSensor.TYPE_PITCH) != 0
-                || (mSensorType & DSensor.TYPE_ROLL) != 0;
+        mCalculateInclination = (mDSensorTypes & DSensor.TYPE_INCLINATION) != 0
+                || (mDSensorTypes & DSensor.TYPE_DEVICE_ROTATION) != 0 || hasDirectionMember;
+        mProcessData = mCalculateInclination || (mDSensorTypes & DSensor.TYPE_PITCH) != 0
+                || (mDSensorTypes & DSensor.TYPE_ROLL) != 0;
         initDSensorEventMembers();
     }
 
@@ -122,46 +137,46 @@ public class DSensorEventProcessor implements SensorEventListener {
         if (mProcessDataWithRotationMatrix) {
             mMagneticField = new DSensorEvent(DSensor.TYPE_DEVICE_MAGNETIC_FIELD, 3);
             mGravity = new DSensorEvent(DSensor.TYPE_DEVICE_GRAVITY, 3);
-        } else if ((mSensorType & DSensor.TYPE_WORLD_GRAVITY) != 0){
+        } else if ((mDSensorTypes & DSensor.TYPE_WORLD_GRAVITY) != 0){
             mGravity = new DSensorEvent(DSensor.TYPE_DEVICE_GRAVITY, 3);
-        } else if ((mSensorType & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0){
+        } else if ((mDSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0){
             mMagneticField = new DSensorEvent(DSensor.TYPE_DEVICE_MAGNETIC_FIELD, 3);
         }
 
         if (mHasTypeGravity == DSensorManager.TYPE_GRAVITY_NOT_AVAILABLE
-                || (mSensorType & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
+                || (mDSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
             mAccelerometer = new DSensorEvent(DSensor.TYPE_DEVICE_ACCELEROMETER, 3);
         }
 
         if (mHasTypeLinearAcceleration == DSensorManager.TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
-                && (mSensorType & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
+                && (mDSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
             mLinearAcceleration = new DSensorEvent(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION, 3);
         }
     }
 
     private boolean initDirectionHistoryMembers(int historyMaxLength) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "initDirectionHistoryMembers(" + historyMaxLength + ")");
-        if ((mSensorType & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
             mXAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
-        if ((mSensorType & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
             mMinusXAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
-        if ((mSensorType & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
             mYAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
-        if ((mSensorType & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
             mMinusYAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
-        if ((mSensorType & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
             mZAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
-        if ((mSensorType & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
             mMinusZAxisDirectionHistories = new DirectionHistory(historyMaxLength);
         }
 
@@ -172,19 +187,19 @@ public class DSensorEventProcessor implements SensorEventListener {
 
     private boolean initWorldHistoryMembers(int historyMaxLength) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "initWorldHistoryMembers(" + historyMaxLength + ")");
-        if ((mSensorType & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
             mAccelerometerInWorldBasisHistories = new WorldHistory(historyMaxLength, 3);
         }
 
-        if ((mSensorType & DSensor.TYPE_WORLD_GRAVITY) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_GRAVITY) != 0) {
             mGravityInWorldBasisHistories = new WorldHistory(historyMaxLength, 3);
         }
 
-        if ((mSensorType & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
             mLinearAccelerationInWorldBasisHistories = new WorldHistory(historyMaxLength, 3);
         }
 
-        return ((mSensorType & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0)
+        return ((mDSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0)
                 || mLinearAccelerationInWorldBasisHistories != null
                 || mGravityInWorldBasisHistories != null
                 || mAccelerometerInWorldBasisHistories != null;
@@ -204,7 +219,7 @@ public class DSensorEventProcessor implements SensorEventListener {
         } else if (sensorType == Sensor.TYPE_MAGNETIC_FIELD) {
             changedSensorTypes = onMagneticFieldChanged(event, builder);
         } else if (sensorType == Sensor.TYPE_ORIENTATION) {
-            changedSensorTypes = onOrientationChanged(event, builder);
+                changedSensorTypes = onOrientationChanged(event, builder);
         } else if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO) {
             if (sensorType == Sensor.TYPE_GRAVITY) {
                 changedSensorTypes = onGravityChanged(event, builder);
@@ -242,20 +257,22 @@ public class DSensorEventProcessor implements SensorEventListener {
             mAccelerometer.timestamp = event.timestamp;
             System.arraycopy(event.values, 0, mAccelerometer.values, 0, event.values.length);
         }
-        if ((mSensorType & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0) {
             builder.setAccelerometerInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_ACCELEROMETER,
                     event.accuracy, event.timestamp, event.values));
             changedSensorTypes = DSensor.TYPE_DEVICE_ACCELEROMETER;
         }
         if (mHasTypeGravity == DSensorManager.TYPE_GRAVITY_NOT_AVAILABLE) {
             changedSensorTypes |= calculateGravity(builder);
-            if ((mSensorType & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0
-                    || (mSensorType & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
+            if ((mDSensorTypes & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0
+                    || (mDSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
                 changedSensorTypes |= calculateLinearAcceleration(builder);
             }
             if (mMagneticField != null) {
-                if (mProcessDataWithRotationMatrix) {
-                    changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+                if (mProcessDataWithRotationMatrix && mHasTypeRotationVector == DSensorManager.TYPE_ROTATION_VECTOR_NOT_AVAILABLE) {
+                    if (SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values)) {
+                        changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+                    }
                 } else if (mProcessData) {
                     changedSensorTypes |= processSensorData(builder);
                 }
@@ -272,18 +289,26 @@ public class DSensorEventProcessor implements SensorEventListener {
             mGravity.timestamp = event.timestamp;
             System.arraycopy(event.values, 0, mGravity.values, 0, event.values.length);
         }
-        if ((mSensorType & DSensor.TYPE_DEVICE_GRAVITY) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_GRAVITY) != 0) {
             builder.setGravityInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_GRAVITY, event.accuracy,
                     event.timestamp, event.values));
             changedSensorTypes |= DSensor.TYPE_DEVICE_GRAVITY;
         }
         if (mMagneticField != null) {
-            if (mProcessDataWithRotationMatrix) {
-                changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+            if (mProcessDataWithRotationMatrix && mHasTypeRotationVector == DSensorManager.TYPE_ROTATION_VECTOR_NOT_AVAILABLE) {
+                if (SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values)) {
+                    changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+                }
             } else if (mProcessData) {
                 changedSensorTypes |= processSensorData(builder);
             }
         }
+        SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values);
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "angle = "
+                + Math.round(Math.toDegrees(Math.atan2(mRotationMatrix[1], mRotationMatrix[4]))));
         return changedSensorTypes;
     }
 
@@ -295,30 +320,38 @@ public class DSensorEventProcessor implements SensorEventListener {
             mMagneticField.timestamp = event.timestamp;
             System.arraycopy(event.values, 0, mMagneticField.values, 0, event.values.length);
         }
-        if ((mSensorType & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0) {
             builder.setMagneticFieldInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_MAGNETIC_FIELD,
                     event.accuracy, event.timestamp, event.values));
             changedSensorTypes |= DSensor.TYPE_DEVICE_MAGNETIC_FIELD;
         }
         if (mGravity != null) {
-            if (mProcessDataWithRotationMatrix) {
-                changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+            if (mProcessDataWithRotationMatrix && mHasTypeRotationVector == DSensorManager.TYPE_ROTATION_VECTOR_NOT_AVAILABLE) {
+                if (SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values)) {
+                    changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
+                }
             } else if (mProcessData) {
                 changedSensorTypes |= processSensorData(builder);
             }
         }
+        SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values);
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "angle = "
+                + Math.round(Math.toDegrees(Math.atan2(mRotationMatrix[1], mRotationMatrix[4]))));
         return changedSensorTypes;
     }
 
     private int onLinearAccelerationChanged(SensorEvent event, DProcessedSensorEvent.DProcessedSensorEventBuilder builder) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "onLinearAccelerationChanged");
         int changedSensorTypes = 0;
-        if ((mSensorType & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0) {
             builder.setLinearAccelerationInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION,
                     event.accuracy, event.timestamp, event.values));
             changedSensorTypes |= DSensor.TYPE_DEVICE_LINEAR_ACCELERATION;
         }
-        if ((mSensorType & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
             if (mRotationMatrix != null) {
                 mLinearAccelerationInWorldBasisHistories.add(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION,
                         event.accuracy, event.timestamp, mLinearAcceleration.values, mRotationMatrix);
@@ -331,9 +364,9 @@ public class DSensorEventProcessor implements SensorEventListener {
     }
 
     private int onOrientationChanged(SensorEvent event, DProcessedSensorEvent.DProcessedSensorEventBuilder builder) {
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "onOrientationChanged");
-                builder.setDepreciatedOrientation(new DSensorEvent(DSensor.TYPE_DEPRECIATED_ORIENTATION,
-                        event.accuracy, event.timestamp, event.values));
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "onOrientationChanged  angle = " + Math.round(event.values[0]));
+        builder.setDepreciatedOrientation(new DSensorEvent(DSensor.TYPE_DEPRECIATED_ORIENTATION,
+                event.accuracy, event.timestamp, event.values));
         return DSensor.TYPE_DEPRECIATED_ORIENTATION;
     }
 
@@ -342,7 +375,7 @@ public class DSensorEventProcessor implements SensorEventListener {
         int changedSensorTypes = 0;
         float[] gyroscope = new float[event.values.length];
         System.arraycopy(event.values, 0, gyroscope, 0, event.values.length);
-        if ((mSensorType & DSensor.TYPE_GYROSCOPE) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_GYROSCOPE) != 0) {
             builder.setGyroscope(new DSensorEvent(DSensor.TYPE_GYROSCOPE, event.accuracy,
                     event.timestamp, gyroscope));
             changedSensorTypes |= DSensor.TYPE_GYROSCOPE;
@@ -350,15 +383,23 @@ public class DSensorEventProcessor implements SensorEventListener {
         return changedSensorTypes;
     }
 
+    @TargetApi(9)
     private int onRotationVectorChanged(SensorEvent event, DProcessedSensorEvent.DProcessedSensorEventBuilder builder) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "onRotationVectorChanged");
         int changedSensorTypes = 0;
         float[] rotationVector = new float[event.values.length];
         System.arraycopy(event.values, 0, rotationVector, 0, event.values.length);
-        if ((mSensorType & DSensor.TYPE_ROTATION_VECTOR) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_ROTATION_VECTOR) != 0) {
             builder.setRotationVector(new DSensorEvent(DSensor.TYPE_ROTATION_VECTOR, event.accuracy,
                     event.timestamp, rotationVector));
             changedSensorTypes |= DSensor.TYPE_ROTATION_VECTOR;
+        }
+        SensorManager.getRotationMatrixFromVector(mRotationMatrix, rotationVector);
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
+        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
+        if (mProcessDataWithRotationMatrix) {
+            changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
         }
         return changedSensorTypes;
     }
@@ -367,9 +408,9 @@ public class DSensorEventProcessor implements SensorEventListener {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "processSensorData");
         int changedSensorTypes = 0;
         float gravityNorm = DMath.calculateNorm(mGravity.values);
-        if ((mSensorType & DSensor.TYPE_DEVICE_ROTATION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_ROTATION) != 0) {
             mInclination = (float) Math.acos(mGravity.values[2] / gravityNorm);
-            if ((mSensorType & DSensor.TYPE_INCLINATION) != 0) {
+            if ((mDSensorTypes & DSensor.TYPE_INCLINATION) != 0) {
                 builder.setInclination(new DSensorEvent(DSensor.TYPE_INCLINATION,
                         mGravity.accuracy, mGravity.timestamp, mInclination));
                 changedSensorTypes |= DSensor.TYPE_INCLINATION;
@@ -385,18 +426,18 @@ public class DSensorEventProcessor implements SensorEventListener {
             builder.setDeviceRotation(new DSensorEvent(DSensor.TYPE_DEVICE_ROTATION,
                     mGravity.accuracy, mGravity.timestamp, deviceRotation));
             changedSensorTypes |= DSensor.TYPE_DEVICE_ROTATION;
-        } else if ((mSensorType & DSensor.TYPE_INCLINATION) != 0) {
+        } else if ((mDSensorTypes & DSensor.TYPE_INCLINATION) != 0) {
             mInclination = (float) Math.acos(mGravity.values[2] / gravityNorm);
             builder.setInclination(new DSensorEvent(DSensor.TYPE_INCLINATION,
                     mGravity.accuracy, mGravity.timestamp, mInclination));
             changedSensorTypes |= DSensor.TYPE_INCLINATION;
         }
-        if ((mSensorType & DSensor.TYPE_PITCH) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_PITCH) != 0) {
             builder.setPitch(new DSensorEvent(DSensor.TYPE_PITCH, mGravity.accuracy,
                     mGravity.timestamp, (float)Math.asin(-mGravity.values[1] / gravityNorm)));
             changedSensorTypes |= DSensor.TYPE_PITCH;
         }
-        if ((mSensorType & DSensor.TYPE_ROLL) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_ROLL) != 0) {
             builder.setRoll(new DSensorEvent(DSensor.TYPE_ROLL, mGravity.accuracy, mGravity.timestamp,
                     (float)Math.atan2(-mGravity.values[0] / gravityNorm, mGravity.values[2] / gravityNorm)));
             changedSensorTypes |= DSensor.TYPE_ROLL;
@@ -407,163 +448,165 @@ public class DSensorEventProcessor implements SensorEventListener {
     private int processSensorDataWithRotationMatrix(DProcessedSensorEvent.DProcessedSensorEventBuilder builder) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "processSensorDataWithRotationMatrix()");
         int changedSensorTypes = 0;
-        if (SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values)) {
-            if ((mSensorType & DSensor.TYPE_ROLL) != 0) {
-                builder.setRoll(new DSensorEvent(DSensor.TYPE_ROLL, mGravity.accuracy, mGravity.timestamp,
-                        (float)Math.atan2(-mRotationMatrix[6], mRotationMatrix[8])));
-                changedSensorTypes |= DSensor.TYPE_ROLL;
+
+        if ((mDSensorTypes & DSensor.TYPE_ROLL) != 0) {
+            builder.setRoll(new DSensorEvent(DSensor.TYPE_ROLL, mGravity.accuracy, mGravity.timestamp,
+                    (float)Math.atan2(-mRotationMatrix[6], mRotationMatrix[8])));
+            changedSensorTypes |= DSensor.TYPE_ROLL;
+        }
+
+        if ((mDSensorTypes & DSensor.TYPE_PITCH) != 0) {
+            builder.setPitch(new DSensorEvent(DSensor.TYPE_PITCH, mGravity.accuracy,
+                    mGravity.timestamp, (float) Math.asin(-mRotationMatrix[7])));
+            changedSensorTypes |= DSensor.TYPE_PITCH;
+        }
+
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
+            mAccelerometerInWorldBasisHistories.add(mAccelerometer, mRotationMatrix);
+            builder.setAccelerometerInWorldBasis(mAccelerometerInWorldBasisHistories
+                    .getAverageSensorEvent(DSensor.TYPE_WORLD_ACCELEROMETER));
+            changedSensorTypes |= DSensor.TYPE_WORLD_ACCELEROMETER;
+        }
+
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_GRAVITY) != 0) {
+            mGravityInWorldBasisHistories.add(mGravity, mRotationMatrix);
+            builder.setGravityInWorldBasis(mGravityInWorldBasisHistories
+                    .getAverageSensorEvent(DSensor.TYPE_WORLD_GRAVITY));
+            changedSensorTypes |= DSensor.TYPE_WORLD_GRAVITY;
+        }
+
+        if ((mDSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0) {
+            builder.setMagneticFieldInWorldBasis(new DSensorEvent(DSensor.TYPE_WORLD_MAGNETIC_FIELD,
+                    mMagneticField.accuracy, mMagneticField.timestamp,
+                    DMath.productOfSquareMatrixAndVector(mRotationMatrix, mMagneticField.values)));
+            changedSensorTypes |= DSensor.TYPE_WORLD_MAGNETIC_FIELD;
+        }
+
+        if (mHasTypeLinearAcceleration == DSensorManager.TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE) {
+            mLinearAccelerationInWorldBasisHistories.add(mLinearAcceleration, mRotationMatrix);
+            builder.setLinearAccelerationInWorldBasis(mLinearAccelerationInWorldBasisHistories
+                    .getAverageSensorEvent(DSensor.TYPE_WORLD_MAGNETIC_FIELD));
+            changedSensorTypes |= DSensor.TYPE_WORLD_LINEAR_ACCELERATION;
+        }
+
+        if (mCalculateInclination) {
+            // See DSensorEventProcessor.TYPE_DEVICE_INCLINATION for a
+            // geometric interpretation.
+            mInclination = (float) Math.acos(mRotationMatrix[8]);
+            if ((mDSensorTypes & DSensor.TYPE_INCLINATION) != 0) {
+                builder.setInclination(new DSensorEvent(DSensor.TYPE_INCLINATION,
+                        mGravity.accuracy, mGravity.timestamp, mInclination));
+                changedSensorTypes |= DSensor.TYPE_INCLINATION;
             }
 
-            if ((mSensorType & DSensor.TYPE_PITCH) != 0) {
-                builder.setPitch(new DSensorEvent(DSensor.TYPE_PITCH, mGravity.accuracy,
-                        mGravity.timestamp, (float)Math.asin(-mRotationMatrix[7])));
-                changedSensorTypes |= DSensor.TYPE_PITCH;
-            }
-
-            if ((mSensorType & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
-                mAccelerometerInWorldBasisHistories.add(mAccelerometer, mRotationMatrix);
-                builder.setAccelerometerInWorldBasis(mAccelerometerInWorldBasisHistories
-                        .getAverageSensorEvent(DSensor.TYPE_WORLD_ACCELEROMETER));
-                changedSensorTypes |= DSensor.TYPE_WORLD_ACCELEROMETER;
-            }
-
-            if ((mSensorType & DSensor.TYPE_WORLD_GRAVITY) != 0) {
-                mGravityInWorldBasisHistories.add(mGravity, mRotationMatrix);
-                builder.setGravityInWorldBasis(mGravityInWorldBasisHistories
-                        .getAverageSensorEvent(DSensor.TYPE_WORLD_GRAVITY));
-                changedSensorTypes |= DSensor.TYPE_WORLD_GRAVITY;
-            }
-
-            if ((mSensorType & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0) {
-                builder.setMagneticFieldInWorldBasis(new DSensorEvent(DSensor.TYPE_WORLD_MAGNETIC_FIELD,
-                        mMagneticField.accuracy, mMagneticField.timestamp,
-                        DMath.productOfSquareMatrixAndVector(mRotationMatrix, mMagneticField.values)));
-                changedSensorTypes |= DSensor.TYPE_WORLD_MAGNETIC_FIELD;
-            }
-
-            if (mHasTypeLinearAcceleration == DSensorManager.TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE) {
-                mLinearAccelerationInWorldBasisHistories.add(mLinearAcceleration, mRotationMatrix);
-                builder.setLinearAccelerationInWorldBasis(mLinearAccelerationInWorldBasisHistories
-                        .getAverageSensorEvent(DSensor.TYPE_WORLD_MAGNETIC_FIELD));
-                changedSensorTypes |= DSensor.TYPE_WORLD_LINEAR_ACCELERATION;
-            }
-
-            if (mCalculateInclination) {
-                // See DSensorEventProcessor.TYPE_DEVICE_INCLINATION for a
-                // geometric interpretation.
-                mInclination = (float) Math.acos(mRotationMatrix[8]);
-                if ((mSensorType & DSensor.TYPE_INCLINATION) != 0) {
-                    builder.setInclination(new DSensorEvent(DSensor.TYPE_INCLINATION,
-                            mGravity.accuracy, mGravity.timestamp, mInclination));
-                    changedSensorTypes |= DSensor.TYPE_INCLINATION;
+            // Due to noise and numerical limitation, only compass
+            // field is calculable when inclination < 25 or inclination > 155
+            if (mInclination < TWENTY_FIVE_DEGREE_IN_RADIAN
+                    || mInclination > ONE_FIFTY_FIVE_DEGREE_IN_RADIAN) {
+                if ((mDSensorTypes & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
+                    mZAxisDirectionHistories.clearHistories();
+                    builder.setZAxisDirection(new DSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_Z_AXIS_DIRECTION;
                 }
 
-                // Due to noise and numerical limitation, only compass
-                // field is calculable when inclination < 25 or inclination > 155
-                if (mInclination < TWENTY_FIVE_DEGREE_IN_RADIAN
-                        || mInclination > ONE_FIFTY_FIVE_DEGREE_IN_RADIAN) {
-                    if ((mSensorType & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
-                        mZAxisDirectionHistories.clearHistories();
-                        builder.setZAxisDirection(new DSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_Z_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
+                    mMinusZAxisDirectionHistories.clearHistories();
+                    builder.setMinusZAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
-                        mMinusZAxisDirectionHistories.clearHistories();
-                        builder.setMinusZAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
+                    mYAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[1], mRotationMatrix[4])));
+                    DSensorEvent dSensorEvent = mYAxisDirectionHistories.getAverageSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION);
+                    Logger.d(DSensorEventProcessor.class.getSimpleName(), "processSensorDataWithRotationMatrix() angle = "
+                            + Math.round(Math.toDegrees(dSensorEvent.values[0])));
+                    builder.setYAxisDirection(mYAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_Y_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
-                        mYAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[1], mRotationMatrix[4])));
-                        builder.setYAxisDirection(mYAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_Y_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
+                    mMinusYAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[1], -mRotationMatrix[4])));
+                    builder.setMinusYAxisDirection(mMinusYAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_Y_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
-                        mMinusYAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[1], -mRotationMatrix[4])));
-                        builder.setMinusYAxisDirection(mMinusYAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_Y_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
+                    mXAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[0], mRotationMatrix[3])));
+                    builder.setXAxisDirection(mXAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_X_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
-                        mXAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[0], mRotationMatrix[3])));
-                        builder.setXAxisDirection(mXAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_X_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
+                    mMinusXAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[0], -mRotationMatrix[3])));
+                    builder.setMinusXAxisDirection(mMinusXAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_X_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
-                        mMinusXAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[0], -mRotationMatrix[3])));
-                        builder.setMinusXAxisDirection(mMinusXAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_X_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_DEVICE_ROTATION) != 0) {
+                    builder.setDeviceRotation(new DSensorEvent(DSensor.TYPE_DEVICE_ROTATION,
+                            mGravity.accuracy, mGravity.timestamp, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_DEVICE_ROTATION;
+                }
+            } else {
+                if ((mDSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
+                    mYAxisDirectionHistories.clearHistories();
+                    builder.setYAxisDirection(new DSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_Y_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_DEVICE_ROTATION) != 0) {
-                        builder.setDeviceRotation(new DSensorEvent(DSensor.TYPE_DEVICE_ROTATION,
-                                mGravity.accuracy, mGravity.timestamp, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_DEVICE_ROTATION;
-                    }
-                } else {
-                    if ((mSensorType & DSensor.TYPE_Y_AXIS_DIRECTION) != 0) {
-                        mYAxisDirectionHistories.clearHistories();
-                        builder.setYAxisDirection(new DSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_Y_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
+                    mMinusYAxisDirectionHistories.clearHistories();
+                    builder.setMinusYAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_Y_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0) {
-                        mMinusYAxisDirectionHistories.clearHistories();
-                        builder.setMinusYAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_Y_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_Y_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
+                    mXAxisDirectionHistories.clearHistories();
+                    builder.setXAxisDirection(new DSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_X_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_X_AXIS_DIRECTION) != 0) {
-                        mXAxisDirectionHistories.clearHistories();
-                        builder.setXAxisDirection(new DSensorEvent(DSensor.TYPE_X_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_X_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
+                    mMinusXAxisDirectionHistories.clearHistories();
+                    builder.setMinusXAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION, 0, 0, Float.NaN));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_X_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0) {
-                        mMinusXAxisDirectionHistories.clearHistories();
-                        builder.setMinusXAxisDirection(new DSensorEvent(DSensor.TYPE_MINUS_X_AXIS_DIRECTION, 0, 0, Float.NaN));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_X_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
+                    mZAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[2], mRotationMatrix[5])));
+                    builder.setZAxisDirection(mZAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_Z_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_Z_AXIS_DIRECTION) != 0) {
-                        mZAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[2], mRotationMatrix[5])));
-                        builder.setZAxisDirection(mZAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_Z_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_Z_AXIS_DIRECTION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
+                    mMinusZAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION,
+                            mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
+                            : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[2], -mRotationMatrix[5])));
+                    builder.setMinusZAxisDirection(mMinusZAxisDirectionHistories
+                            .getAverageSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION));
+                    changedSensorTypes |= DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
+                }
 
-                    if ((mSensorType & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
-                        mMinusZAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION,
-                                mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
-                                : mMagneticField.timestamp, (float) Math.atan2(-mRotationMatrix[2], -mRotationMatrix[5])));
-                        builder.setMinusZAxisDirection(mMinusZAxisDirectionHistories
-                                .getAverageSensorEvent(DSensor.TYPE_MINUS_Z_AXIS_DIRECTION));
-                        changedSensorTypes |= DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
-                    }
-
-                    if ((mSensorType & DSensor.TYPE_DEVICE_ROTATION) != 0) {
-                        builder.setDeviceRotation(new DSensorEvent(DSensor.TYPE_DEVICE_ROTATION,
-                                mGravity.accuracy, mGravity.timestamp,
-                                (float) Math.atan2(mRotationMatrix[6], mRotationMatrix[7])));
-                        changedSensorTypes |= DSensor.TYPE_DEVICE_ROTATION;
-                    }
+                if ((mDSensorTypes & DSensor.TYPE_DEVICE_ROTATION) != 0) {
+                    builder.setDeviceRotation(new DSensorEvent(DSensor.TYPE_DEVICE_ROTATION,
+                            mGravity.accuracy, mGravity.timestamp,
+                            (float) Math.atan2(mRotationMatrix[6], mRotationMatrix[7])));
+                    changedSensorTypes |= DSensor.TYPE_DEVICE_ROTATION;
                 }
             }
         }
@@ -583,7 +626,7 @@ public class DSensorEventProcessor implements SensorEventListener {
             }
         }
 
-        if ((mSensorType & DSensor.TYPE_DEVICE_GRAVITY) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_GRAVITY) != 0) {
             builder.setGravityInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_GRAVITY,
                     mAccelerometer.accuracy, mAccelerometer.timestamp, mGravity.values));
             return DSensor.TYPE_DEVICE_GRAVITY;
@@ -602,7 +645,7 @@ public class DSensorEventProcessor implements SensorEventListener {
             mLinearAcceleration.timestamp = mAccelerometer.timestamp;
             System.arraycopy(linearAcceleration, 0, mLinearAcceleration.values, 0, 3);
         }
-        if ((mSensorType & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0) {
+        if ((mDSensorTypes & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) != 0) {
             builder.setLinearAccelerationInDeviceBasis(new DSensorEvent(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION,
                     mAccelerometer.accuracy, mAccelerometer.timestamp, linearAcceleration));
             return DSensor.TYPE_DEVICE_LINEAR_ACCELERATION;
@@ -628,7 +671,8 @@ public class DSensorEventProcessor implements SensorEventListener {
         }
 
         public void add(DSensorEvent item) {
-            Logger.d(DirectionHistory.class.getSimpleName(), "add size = " + mHistories.size());
+            Logger.d(DirectionHistory.class.getSimpleName(), "add size = " + mHistories.size()
+                    + " angle = " + Math.round(Math.toDegrees(item.values[0])));
             mHistoryTimeStampSum += item.timestamp;
             if (mHistories.size() == mHistoryMaxSize) {
                 DSensorEvent firstTerm = mHistories.removeFirst();
@@ -640,8 +684,6 @@ public class DSensorEventProcessor implements SensorEventListener {
         }
 
         public DSensorEvent getAverageSensorEvent(int sensorType) {
-            Logger.d(DirectionHistory.class.getSimpleName(), "getAngle angle = " +
-                    Math.round(Math.toDegrees(DMath.averageAngle(mHistoriesSum, mHistories.size()))));
             return new DSensorEvent(sensorType, mHistories.getFirst().accuracy,
                     ((long) (1.0f / mHistories.size()) * mHistoryTimeStampSum),
                     mHistories.isEmpty() ? Float.NaN : DMath.averageAngle(mHistoriesSum, mHistories.size()));

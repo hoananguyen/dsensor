@@ -18,13 +18,13 @@ public class Logger {
     private static final boolean WRITE_TO_FILE = false;
 
 	private static final List<String> DEBUG_CLASSES = Arrays.asList(
-			"DirectionHistory",
-			DMath.class.getSimpleName(),
-			DProcessedSensorEvent.class.getSimpleName(),
-			DSensorEvent.class.getSimpleName(),
-			DSensorEventProcessor.class.getSimpleName(),
-         	DSensorManager.class.getSimpleName(),
-			"WorldHistory"
+			//"DirectionHistory",
+			//DMath.class.getSimpleName(),
+			//DProcessedSensorEvent.class.getSimpleName(),
+			//DSensorEvent.class.getSimpleName(),
+			//DSensorEventProcessor.class.getSimpleName(),
+         	//DSensorManager.class.getSimpleName(),
+			//"WorldHistory"
     );
 
 	private Logger() {

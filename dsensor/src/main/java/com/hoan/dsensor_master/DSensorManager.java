@@ -26,6 +26,9 @@ public class DSensorManager {
     public static final int TYPE_LINEAR_ACCELERATION_NOT_NEEDED = 0;
     public static final int HAS_TYPE_LINEAR_ACCELERATION = 1;
 
+    public static final int TYPE_ROTATION_VECTOR_NOT_NEEDED = 0;
+    public static final int HAS_TYPE_ROTATION_VECTOR = 1;
+
     public static final int REGISTERED_TYPES_AVAILABLE = 0;
     public static final int TYPE_ACCELEROMETER_NOT_AVAILABLE = 2;
     public static final int TYPE_MAGNETIC_FIELD_NOT_AVAILABLE = 4;
@@ -117,7 +120,7 @@ public class DSensorManager {
      *  of DSensorEventProcessor.DEFAULT_HISTORY_SIZE. Sensor rate is default to
      *  SensorManager.SENSOR_DELAY_NORMAL
      * @param context
-     * @param dSensorTypes see DSensor
+     * @param dSensorTypes Bitwise OR of DSensor types
      * @param dSensorEventListener callback
      * @return REGISTERED_TYPES_AVAILABLE if device has all sensors or can be
      *          calculated from other sensors in sensorTypes. Otherwise bitwise
@@ -137,7 +140,7 @@ public class DSensorManager {
      *  directions DSensors and values of sensors in World coordinate system is set to default value
      *  of DSensorEventProcessor.DEFAULT_HISTORY_SIZE.
      * @param context
-     * @param dSensorTypes see DSensor
+     * @param dSensorTypes Bitwise OR of DSensor types
      * @param sensorRate Sensor rate using android SensorManager rate constants,
      *                  i.e. SensorManager.SENSOR_DELAY_FASTEST.
      * @param dSensorEventListener callback
@@ -155,8 +158,8 @@ public class DSensorManager {
     /**
      *  Start DSensor processing, processed results are in the DProcessedSensorEvent parameter of
      *  onDSensorChanged method of the DSensorEventListener callback.
-     * @param context Android context
-     * @param dSensorTypes see DSensor
+     * @param context
+     * @param dSensorTypes Bitwise OR of DSensor types
      * @param sensorRate Sensor rate using android SensorManager rate constants,
      *                  i.e. SensorManager.SENSOR_DELAY_FASTEST.
      * @param historyMaxLength max history size for averaging.
@@ -174,38 +177,94 @@ public class DSensorManager {
             stopDSensor();
         }
         new DSensorManager(context);
-        int hasGravity = hasTypeGravity(dSensorTypes);
+        boolean worldTypesRegistered = worldTypesRegistered(dSensorTypes);
+        boolean directionTypesRegistered = directionTypesRegistered(dSensorTypes);
+        int hasRotationVector = hasTypeRotationVector(dSensorTypes, worldTypesRegistered, directionTypesRegistered);
         int hasLinearAcceleration = hasTypeLinearAcceleration(dSensorTypes);
-        mDSensorEvent = new DSensorEventProcessor(dSensorTypes, historyMaxLength, hasGravity, hasLinearAcceleration, dSensorEventListener);
-        return registerListener(dSensorTypes, sensorRate, hasGravity, hasLinearAcceleration);
+        int hasGravity = hasTypeGravity(dSensorTypes, hasLinearAcceleration, hasRotationVector,
+                worldTypesRegistered, directionTypesRegistered);
+        mDSensorEvent = new DSensorEventProcessor(dSensorTypes, historyMaxLength, hasRotationVector,
+                hasGravity, hasLinearAcceleration, dSensorEventListener);
+        return registerListener(dSensorTypes, sensorRate, hasLinearAcceleration, hasRotationVector,
+                hasGravity, worldTypesRegistered, directionTypesRegistered);
     }
 
     /**
-     * Check if the device has TYPE_GRAVITY
-     * @param sensorTypes DSensor types
-     * @return TYPE_GRAVITY_NOT_NEEDED if sensorTypes does not require TYPE_GRAVITY
-     *         HAS_TYPE_GRAVITY if device has TYPE_GRAVITY and it is required for calculation
-     *         TYPE_GRAVITY_NOT_AVAILABLE if device does not has TYPE_GRAVITY and is required
+     * Check if TYPE_WORLD_* is registered
+     * @param dSensorTypes Bitwise OR of DSensor types
+     * @return true if dSensorTypes is of TYPE_WORLD_*
      */
-    private static int hasTypeGravity(int sensorTypes) {
+    private static boolean worldTypesRegistered(int dSensorTypes) {
+        return (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0
+                && (dSensorTypes & DSensor.TYPE_WORLD_GRAVITY) == 0
+                && (dSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) == 0
+                && (dSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) == 0;
+    }
+
+    /**
+     * Check if TYPE_*_DIRECTION is registered
+     * @param dSensorTypes Bitwise OR of DSensor types
+     * @return true if dSensorTypes is of TYPE_*_DIRECTION
+     */
+    private static boolean directionTypesRegistered(int dSensorTypes) {
+        return (dSensorTypes & DSensor.TYPE_Z_AXIS_DIRECTION) == 0
+                && (dSensorTypes & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) == 0
+                && (dSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) == 0
+                && (dSensorTypes & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) == 0
+                && (dSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) == 0
+                && (dSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) == 0;
+    }
+
+    /**
+     * Check if device has TYPE_ROTATION_VECTOR if registered of required for calculation.
+     * @param sensorTypes Bitwise OR of DSensor types.
+     * @param worldTypesRegistered Is TYPE_WORLD_* registered.
+     * @param directionTypesRegistered Is TYPE_*_DIRECTION registered.
+     * @return TYPE_ROTATION_VECTOR_NOT_NEEDED if TYPE_ROTATION_VECTOR is not registered or not
+     *         needed for calculation. Else HAS_TYPE_ROTATION_VECTOR if device has TYPE_ROTATION_VECTOR
+     *         or TYPE_ROTATION_VECTOR_NOT_AVAILABLE if device does not have TYPE_ROTATION_VECTOR.
+     */
+    private static int hasTypeRotationVector(int sensorTypes, boolean worldTypesRegistered,
+                                             boolean directionTypesRegistered) {
+        Logger.d(DSensorManager.class.getSimpleName(), "hasTypeRotationVector(" + sensorTypes + ")");
+        if ((sensorTypes & DSensor.TYPE_ROTATION_VECTOR) == 0
+                && !worldTypesRegistered && !directionTypesRegistered) {
+            return TYPE_ROTATION_VECTOR_NOT_NEEDED;
+        }
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO
+                && mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) != null) {
+            return HAS_TYPE_ROTATION_VECTOR;
+        }
+        return TYPE_ROTATION_VECTOR_NOT_AVAILABLE;
+    }
+
+    /**
+     * Check if the device has TYPE_GRAVITY if registered of required for calculation.
+     * @param sensorTypes Bitwise OR of DSensor types.
+     * @param hasLinearAcceleration one of the flag HAS_TYPE_LINEAR_ACCELERATION,
+     *                              TYPE_LINEAR_ACCELERATION_NOT_NEEDED or
+     *                              TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE.
+     * @param hasRotationVector one of the flag HAS_TYPE_ROTATION_VECTOR,
+     *                          TYPE_ROTATION_VECTOR_NOT_NEEDED or
+     *                          TYPE_ROTATION_VECTOR_NOT_AVAILABLE.
+     * @param worldTypesRegistered Is TYPE_WORLD_* registered.
+     * @param directionTypesRegistered Is TYPE_*_DIRECTION registered.
+     * @return TYPE_GRAVITY_NOT_NEEDED if TYPE_GRAVITY is not registered or not needed for calculation.
+     *         Else HAS_TYPE_GRAVITY or TYPE_GRAVITY_NOT_AVAILABLE.
+     */
+    private static int hasTypeGravity(int sensorTypes, int hasLinearAcceleration, int hasRotationVector,
+                                      boolean worldTypesRegistered, boolean directionTypesRegistered) {
         Logger.d(DSensorManager.class.getSimpleName(), "hasTypeGravity(" + sensorTypes + ")");
         if ((sensorTypes & DSensor.TYPE_DEVICE_GRAVITY) == 0
-                && (sensorTypes & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) == 0
-                && (sensorTypes & DSensor.TYPE_Z_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) == 0
-                && (sensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0
-                && (sensorTypes & DSensor.TYPE_WORLD_GRAVITY) == 0
-                && (sensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) == 0
-                && (sensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) == 0
-                && (sensorTypes & DSensor.TYPE_INCLINATION) == 0
-                && (sensorTypes & DSensor.TYPE_DEVICE_ROTATION) == 0
-                && (sensorTypes & DSensor.TYPE_PITCH) == 0
-                && (sensorTypes & DSensor.TYPE_ROLL) == 0) {
-            return TYPE_GRAVITY_NOT_NEEDED;
+                && (hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_NEEDED
+                    || hasLinearAcceleration == HAS_TYPE_LINEAR_ACCELERATION)
+                && (hasRotationVector == HAS_TYPE_ROTATION_VECTOR
+                    || (!worldTypesRegistered && !directionTypesRegistered
+                        && (sensorTypes & DSensor.TYPE_INCLINATION) == 0
+                        && (sensorTypes & DSensor.TYPE_DEVICE_ROTATION) == 0
+                        && (sensorTypes & DSensor.TYPE_PITCH) == 0
+                        && (sensorTypes & DSensor.TYPE_ROLL) == 0))) {
+                return TYPE_GRAVITY_NOT_NEEDED;
         }
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO
                 && mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) != null) {
@@ -215,6 +274,13 @@ public class DSensorManager {
         return TYPE_GRAVITY_NOT_AVAILABLE;
     }
 
+    /**
+     * Check if the device has TYPE_LINEAR_ACCELERATION if registered of required for calculation.
+     * @param sensorTypes Bitwise OR of DSensor types.
+     * @return TYPE_LINEAR_ACCELERATION_NOT_NEEDED if TYPE_LINEAR_ACCELERATION is not registered
+     *         or not needed for calculation. Else HAS_TYPE_LINEAR_ACCELERATION or
+     *         TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE.
+     */
     private static int hasTypeLinearAcceleration(int sensorTypes) {
         Logger.d(DSensorManager.class.getSimpleName(), "hasTypeLinearAcceleration(" + sensorTypes + ")");
         if ((sensorTypes & DSensor.TYPE_DEVICE_LINEAR_ACCELERATION) == 0
@@ -229,6 +295,13 @@ public class DSensorManager {
         return TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE;
     }
 
+    /**
+     *
+     * @param sensorType One of SDK Sensor type.
+     * @param sensorRate One of SensorManager.SENSOR_DELAY_*
+     * @param errorValue Error to return if sensorType not available.
+     * @return REGISTERED_TYPES_AVAILABLE if device has the sensor, else errorValue.
+     */
     private static int registerListener(int sensorType, int sensorRate, int errorValue) {
         Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + sensorType + ", " + sensorRate + ", " + errorValue + ")");
         Sensor sensor = mSensorManager.getDefaultSensor(sensorType);
@@ -242,53 +315,91 @@ public class DSensorManager {
     }
 
 
-    private static int registerListener(int sensorType, int sensorRate,
-                                         int hasGravity, int hasLinearAcceleration) {
-        Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + sensorType + ", "
+    /**
+     * Register all sensors in dSensorTypes or sensors required for calculation.
+     * @param dSensorTypes Bitwise OR of DSensor types.
+     * @param sensorRate One of SensorManager.SENSOR_DELAY_*
+     * @param hasLinearAcceleration one of the flag HAS_TYPE_LINEAR_ACCELERATION,
+     *                              TYPE_LINEAR_ACCELERATION_NOT_NEEDED or
+     *                              TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE.
+     * @param hasRotationVector one of the flag HAS_TYPE_ROTATION_VECTOR,
+     *                          TYPE_ROTATION_VECTOR_NOT_NEEDED or
+     *                          TYPE_ROTATION_VECTOR_NOT_AVAILABLE.
+     * @param hasGravity one of the flag HAS_TYPE_GRAVITY,
+     *                   TYPE_GRAVITY_NOT_NEEDED or
+     *                   TYPE_GRAVITY_NOT_AVAILABLE.
+     * @param worldTypesRegistered Is TYPE_WORLD_* registered.
+     * @param directionTypesRegistered Is TYPE_*_DIRECTION registered.
+     * @return REGISTERED_TYPES_AVAILABLE if device has all needed sensors else bitwise or of
+     *         unavailable sensors.
+     */
+    private static int registerListener(int dSensorTypes, int sensorRate, int hasLinearAcceleration, int hasRotationVector,
+                                         int hasGravity, boolean worldTypesRegistered, boolean directionTypesRegistered) {
+        Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + dSensorTypes + ", "
                 + sensorRate + ", " + hasGravity + ", " + hasLinearAcceleration + ")");
         int result = REGISTERED_TYPES_AVAILABLE;
-        if (hasGravity == TYPE_GRAVITY_NOT_AVAILABLE
-                || hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
-                || (sensorType & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
-                || (sensorType & DSensor.TYPE_WORLD_ACCELEROMETER) != 0) {
-            result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
-        }
+        if (worldTypesRegistered || directionTypesRegistered) {
+            if (hasRotationVector == HAS_TYPE_ROTATION_VECTOR) {
+                result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE);
+                if ((dSensorTypes & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0
+                        || (dSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) == 0) {
+                    result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+                }
 
-        if (hasGravity == HAS_TYPE_GRAVITY) {
-            result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE);
-        }
+                if (hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
+                        || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
+                        || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                }
+            } else {
+                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+                if (hasGravity == HAS_TYPE_GRAVITY) {
+                    result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE);
+                    if (hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
+                            || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
+                            || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
+                        result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                    }
+                } else {
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                }
+            }
+        } else {
+            if (hasGravity == HAS_TYPE_GRAVITY) {
+                result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE);
+                if ((dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
+                        || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                }
+            } else if (hasGravity == TYPE_GRAVITY_NOT_AVAILABLE
+                    || hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
+                    || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
+                    || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
+                result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+            }
 
-        if ((sensorType & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0
-                || (sensorType & DSensor.TYPE_WORLD_ACCELEROMETER) != 0
-                || (sensorType & DSensor.TYPE_WORLD_GRAVITY) != 0
-                || (sensorType & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0
-                || (sensorType & DSensor.TYPE_WORLD_MAGNETIC_FIELD) != 0
-                || (sensorType & DSensor.TYPE_X_AXIS_DIRECTION) != 0
-                || (sensorType & DSensor.TYPE_MINUS_X_AXIS_DIRECTION) != 0
-                || (sensorType & DSensor.TYPE_Y_AXIS_DIRECTION) != 0
-                || (sensorType & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) != 0
-                || (sensorType & DSensor.TYPE_Z_AXIS_DIRECTION) != 0
-                || (sensorType & DSensor.TYPE_MINUS_Z_AXIS_DIRECTION) != 0) {
-            result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+            if ((dSensorTypes & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0) {
+                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+            }
+
+            if ((dSensorTypes & DSensor.TYPE_ROTATION_VECTOR) != 0) {
+                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO) {
+                    result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE);
+                } else {
+                    result |= TYPE_ROTATION_VECTOR_NOT_AVAILABLE;
+                }
+            }
         }
 
         if (hasLinearAcceleration == HAS_TYPE_LINEAR_ACCELERATION) {
             result |= registerListener(Sensor.TYPE_LINEAR_ACCELERATION, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
         }
 
-        if ((sensorType & DSensor.TYPE_GYROSCOPE) != 0) {
+        if ((dSensorTypes & DSensor.TYPE_GYROSCOPE) != 0) {
             result |= registerListener(Sensor.TYPE_GYROSCOPE, sensorRate, TYPE_GYROSCOPE_NOT_AVAILABLE);
         }
 
-        if ((sensorType & DSensor.TYPE_ROTATION_VECTOR) != 0) {
-            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO) {
-                result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE);
-            } else {
-                result |= TYPE_ROTATION_VECTOR_NOT_AVAILABLE;
-            }
-        }
-
-        if ((sensorType & DSensor.TYPE_DEPRECIATED_ORIENTATION) != 0) {
+        if ((dSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) != 0) {
             //noinspection deprecation
             result |= registerListener(Sensor.TYPE_ORIENTATION, sensorRate, TYPE_ORIENTATION_NOT_AVAILABLE);
         }
@@ -385,8 +496,8 @@ public class DSensorManager {
                             result = processedSensorEvent.depreciatedOrientation;
                         }
                         dProcessedEventListener.onProcessedValueChanged(
-                                new DSensorEvent(result.sensorType == DSensor.TYPE_DEPRECIATED_ORIENTATION
-                                        ? DSensor.TYPE_DEPRECIATED_ORIENTATION : DProcessedSensor.TYPE_COMPASS,
+                                new DSensorEvent((changedDSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) == 0
+                                        ? DProcessedSensor.TYPE_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
                                         result.accuracy, result.timestamp, result.values));
                     }
                 });
