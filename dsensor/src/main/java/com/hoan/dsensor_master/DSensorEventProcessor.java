@@ -21,7 +21,7 @@ import java.util.LinkedList;
  */
 public class DSensorEventProcessor implements SensorEventListener {
 
-    public static  final int DEFAULT_HISTORY_SIZE = 20;
+    public static  final int DEFAULT_HISTORY_SIZE = 10;
 
     private static final float TWENTY_FIVE_DEGREE_IN_RADIAN = 0.436332313f;
     private static final float ONE_FIFTY_FIVE_DEGREE_IN_RADIAN = 2.7052603f;
@@ -303,12 +303,7 @@ public class DSensorEventProcessor implements SensorEventListener {
                 changedSensorTypes |= processSensorData(builder);
             }
         }
-        SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values);
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "angle = "
-                + Math.round(Math.toDegrees(Math.atan2(mRotationMatrix[1], mRotationMatrix[4]))));
+
         return changedSensorTypes;
     }
 
@@ -334,12 +329,7 @@ public class DSensorEventProcessor implements SensorEventListener {
                 changedSensorTypes |= processSensorData(builder);
             }
         }
-        SensorManager.getRotationMatrix(mRotationMatrix, null, mGravity.values, mMagneticField.values);
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "angle = "
-                + Math.round(Math.toDegrees(Math.atan2(mRotationMatrix[1], mRotationMatrix[4]))));
+
         return changedSensorTypes;
     }
 
@@ -395,9 +385,6 @@ public class DSensorEventProcessor implements SensorEventListener {
             changedSensorTypes |= DSensor.TYPE_ROTATION_VECTOR;
         }
         SensorManager.getRotationMatrixFromVector(mRotationMatrix, rotationVector);
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[0] + " " + mRotationMatrix[1] + " " + mRotationMatrix[2] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[3] + " " + mRotationMatrix[4] + " " + mRotationMatrix[5] + "]");
-        Logger.d(DSensorEventProcessor.class.getSimpleName(), "[" + mRotationMatrix[6] + " " + mRotationMatrix[7] + " " + mRotationMatrix[8] + "]");
         if (mProcessDataWithRotationMatrix) {
             changedSensorTypes |= processSensorDataWithRotationMatrix(builder);
         }
@@ -490,8 +477,6 @@ public class DSensorEventProcessor implements SensorEventListener {
         }
 
         if (mCalculateInclination) {
-            // See DSensorEventProcessor.TYPE_DEVICE_INCLINATION for a
-            // geometric interpretation.
             mInclination = (float) Math.acos(mRotationMatrix[8]);
             if ((mDSensorTypes & DSensor.TYPE_INCLINATION) != 0) {
                 builder.setInclination(new DSensorEvent(DSensor.TYPE_INCLINATION,
@@ -519,9 +504,6 @@ public class DSensorEventProcessor implements SensorEventListener {
                     mYAxisDirectionHistories.add(new DSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION,
                             mGravity.accuracy, mGravity.timestamp > mMagneticField.timestamp ? mGravity.timestamp
                             : mMagneticField.timestamp, (float) Math.atan2(mRotationMatrix[1], mRotationMatrix[4])));
-                    DSensorEvent dSensorEvent = mYAxisDirectionHistories.getAverageSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION);
-                    Logger.d(DSensorEventProcessor.class.getSimpleName(), "processSensorDataWithRotationMatrix() angle = "
-                            + Math.round(Math.toDegrees(dSensorEvent.values[0])));
                     builder.setYAxisDirection(mYAxisDirectionHistories
                             .getAverageSensorEvent(DSensor.TYPE_Y_AXIS_DIRECTION));
                     changedSensorTypes |= DSensor.TYPE_Y_AXIS_DIRECTION;

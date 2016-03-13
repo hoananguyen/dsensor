@@ -21,6 +21,9 @@ public class DProcessedSensor {
      * Thus for a compass app, all you need to do is to call DSensorManager.startDProcessedSensor
      * passing in this type.
      * The value for this sensor will be from -PI to PI when the device is flat and Float.NAN otherwise.
+     *
+     * Note: this type required the device to have sensor of TYPE_MAGNETIC_FIELD and
+     * TYPE_GRAVITY or TYPE_ACCELEROMETER
      */
     public static final int TYPE_COMPASS_FLAT_ONLY = 1;
 
@@ -28,8 +31,11 @@ public class DProcessedSensor {
      * This is like TYPE_COMPASS_FLAT_ONLY except that when the device
      * is not flat, the value return will be the direction of the device
      * minus z-axis (the direction of the back camera) instead of Float.NAN
+     *
+     * Note: this type required the device to have sensor of TYPE_MAGNETIC_FIELD and
+     * TYPE_GRAVITY or TYPE_ACCELEROMETER
      */
-    public static final int TYPE_COMPASS = 3;
+    public static final int TYPE_3D_COMPASS = 3;
 
     /**
      * This is TYPE_COMPASS_FLAT_ONLY and the depreciated TYPE_ORIENTATION.
@@ -39,8 +45,23 @@ public class DProcessedSensor {
      * callback for the type to update the appropriate UI view. The value
      * for TYPE_ORIENTATION should be the same or differ by PI/2, -PI/2, PI or
      * -PI depending on the initial orientation of the activity.
+     *
+     * Note: this type required the device to have sensor of TYPE_MAGNETIC_FIELD,
+     * TYPE_ORIENTATION and TYPE_GRAVITY or TYPE_ACCELEROMETER
      */
-    public static final int TYPE_COMPASS_FLAT_ONLY_AND_DEPRECIATED_ORIENTATION = 99;
+    public static final int TYPE_COMPASS_FLAT_ONLY_AND_DEPRECIATED_ORIENTATION = 100;
+
+    /**
+     * This is TYPE_3D_COMPASS and the depreciated TYPE_ORIENTATION.
+     * This is intended for testing purpose. The application that register
+     * for this type should check the member sensorType of the parameter
+     * DSensorEvent in the onProcessedValueChanged(DSensorEvent dSensorEvent)
+     * callback for the type to update the appropriate UI view.
+     *
+     * Note: this type required the device to have sensor of TYPE_MAGNETIC_FIELD,
+     * TYPE_ORIENTATION and TYPE_GRAVITY or TYPE_ACCELEROMETER
+     */
+    public static final int TYPE_3D_COMPASS_AND_DEPRECIATED_ORIENTATION = 101;
 
     public static final int ERROR_UNSUPPORTED_TYPE = -1;
 }

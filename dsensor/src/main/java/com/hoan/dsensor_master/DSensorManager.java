@@ -39,15 +39,13 @@ public class DSensorManager {
     public static final int TYPE_ORIENTATION_NOT_AVAILABLE = 128;
 
     private static SensorManager mSensorManager;
-    private static DSensorEventProcessor mDSensorEvent;
+    private static DSensorEventProcessor mDSensorEventProcessor;
     private static HandlerThread mSensorThread;
-    private static Handler mHandler;
 
     private DSensorManager(Context context) {
         Logger.d(DSensorManager.class.getSimpleName(), "constructor");
         mSensorThread = new HandlerThread("sensor_thread");
         mSensorThread.start();
-        mHandler = new Handler(mSensorThread.getLooper());
         mSensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
     }
 
@@ -99,11 +97,14 @@ public class DSensorManager {
                                             int historyMaxLength, DProcessedEventListener dProcessedEventListener) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dProcessedSensorType + ")");
         switch (dProcessedSensorType) {
-            case DProcessedSensor.TYPE_COMPASS:
+            case DProcessedSensor.TYPE_3D_COMPASS:
                 return onTypeCompassRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener);
 
             case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY:
                 return onTypeCompassFlatOnlyRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener);
+
+            case DProcessedSensor.TYPE_3D_COMPASS_AND_DEPRECIATED_ORIENTATION:
+                return onType3DCompassAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
 
             case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY_AND_DEPRECIATED_ORIENTATION:
                 return onTypeCompassFlatOnlyAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
@@ -183,8 +184,8 @@ public class DSensorManager {
         int hasLinearAcceleration = hasTypeLinearAcceleration(dSensorTypes);
         int hasGravity = hasTypeGravity(dSensorTypes, hasLinearAcceleration, hasRotationVector,
                 worldTypesRegistered, directionTypesRegistered);
-        mDSensorEvent = new DSensorEventProcessor(dSensorTypes, historyMaxLength, hasRotationVector,
-                hasGravity, hasLinearAcceleration, dSensorEventListener);
+        mDSensorEventProcessor = new DSensorEventProcessor(dSensorTypes, historyMaxLength,
+                hasRotationVector, hasGravity, hasLinearAcceleration, dSensorEventListener);
         return registerListener(dSensorTypes, sensorRate, hasLinearAcceleration, hasRotationVector,
                 hasGravity, worldTypesRegistered, directionTypesRegistered);
     }
@@ -296,7 +297,7 @@ public class DSensorManager {
     }
 
     /**
-     *
+     * Register sensors
      * @param sensorType One of SDK Sensor type.
      * @param sensorRate One of SensorManager.SENSOR_DELAY_*
      * @param errorValue Error to return if sensorType not available.
@@ -309,8 +310,8 @@ public class DSensorManager {
             return errorValue;
         }
 
-        mSensorManager.registerListener(mDSensorEvent,
-                mSensorManager.getDefaultSensor(sensorType), sensorRate, mHandler);
+        mSensorManager.registerListener(mDSensorEventProcessor, mSensorManager.getDefaultSensor(sensorType),
+                sensorRate, new Handler(mSensorThread.getLooper()));
         return REGISTERED_TYPES_AVAILABLE;
     }
 
@@ -333,8 +334,9 @@ public class DSensorManager {
      * @return REGISTERED_TYPES_AVAILABLE if device has all needed sensors else bitwise or of
      *         unavailable sensors.
      */
-    private static int registerListener(int dSensorTypes, int sensorRate, int hasLinearAcceleration, int hasRotationVector,
-                                         int hasGravity, boolean worldTypesRegistered, boolean directionTypesRegistered) {
+    private static int registerListener(int dSensorTypes, int sensorRate, int hasLinearAcceleration,
+                                        int hasRotationVector, int hasGravity, boolean worldTypesRegistered,
+                                        boolean directionTypesRegistered) {
         Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + dSensorTypes + ", "
                 + sensorRate + ", " + hasGravity + ", " + hasLinearAcceleration + ")");
         int result = REGISTERED_TYPES_AVAILABLE;
@@ -401,7 +403,8 @@ public class DSensorManager {
 
         if ((dSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) != 0) {
             //noinspection deprecation
-            result |= registerListener(Sensor.TYPE_ORIENTATION, sensorRate, TYPE_ORIENTATION_NOT_AVAILABLE);
+            result |= registerListener(Sensor.TYPE_ORIENTATION, sensorRate,
+                    TYPE_ORIENTATION_NOT_AVAILABLE);
         }
 
         return result;
@@ -434,7 +437,7 @@ public class DSensorManager {
                             result = processedSensorEvent.minusZAxisDirection;
                         }
                         dProcessedEventListener.onProcessedValueChanged(
-                                new DSensorEvent(DProcessedSensor.TYPE_COMPASS, result.accuracy,
+                                new DSensorEvent(DProcessedSensor.TYPE_3D_COMPASS, result.accuracy,
                                         result.timestamp, result.values));
                     }
                 });
@@ -497,7 +500,45 @@ public class DSensorManager {
                         }
                         dProcessedEventListener.onProcessedValueChanged(
                                 new DSensorEvent((changedDSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) == 0
-                                        ? DProcessedSensor.TYPE_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
+                                        ? DProcessedSensor.TYPE_3D_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
+                                        result.accuracy, result.timestamp, result.values));
+                    }
+                });
+    }
+
+    private static int onType3DCompassAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
+                                                             final DProcessedEventListener dProcessedEventListener) {
+        final int dSensorDirectionTypes = getCompassDirectionType(context)
+                | DSensor.TYPE_MINUS_Z_AXIS_DIRECTION | DSensor.TYPE_DEPRECIATED_ORIENTATION;
+        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+                new DSensorEventListener() {
+                    @Override
+                    public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
+                        DSensorEvent result;
+                        if ((changedDSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) == 0) {
+                            if (Float.isNaN(processedSensorEvent.minusZAxisDirection.values[0])) {
+                                if ((changedDSensorTypes & DSensor.TYPE_Y_AXIS_DIRECTION) == 0) {
+                                    if ((changedDSensorTypes & DSensor.TYPE_MINUS_Y_AXIS_DIRECTION) == 0) {
+                                        if ((changedDSensorTypes & DSensor.TYPE_X_AXIS_DIRECTION) == 0) {
+                                            result = processedSensorEvent.minusXAxisDirection;
+                                        } else {
+                                            result = processedSensorEvent.xAxisDirection;
+                                        }
+                                    } else {
+                                        result = processedSensorEvent.minusYAxisDirection;
+                                    }
+                                } else {
+                                    result = processedSensorEvent.yAxisDirection;
+                                }
+                            } else {
+                                result = processedSensorEvent.minusZAxisDirection;
+                            }
+                        } else {
+                            result = processedSensorEvent.depreciatedOrientation;
+                        }
+                        dProcessedEventListener.onProcessedValueChanged(
+                                new DSensorEvent((changedDSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) == 0
+                                        ? DProcessedSensor.TYPE_3D_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
                                         result.accuracy, result.timestamp, result.values));
                     }
                 });
@@ -524,7 +565,7 @@ public class DSensorManager {
     public static void stopDSensor() {
         Logger.d(DSensorManager.class.getSimpleName(), "stopDSensor");
         if (mSensorManager != null) {
-            mSensorManager.unregisterListener(mDSensorEvent);
+            mSensorManager.unregisterListener(mDSensorEventProcessor);
             mSensorThread.quit();
             mSensorManager = null;
         }
