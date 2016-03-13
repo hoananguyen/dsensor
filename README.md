@@ -26,6 +26,8 @@ protected void onPause() {
 }
 </code></pre>
 
+For more usage check out a sample project at https://github.com/hoananguyen/dsensor-sample 
+
 <b>Android Studio</b>
 
 In your project import this library as new module and in the build.graddle 
