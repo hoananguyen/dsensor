@@ -62,6 +62,4 @@ public class DProcessedSensor {
      * TYPE_ORIENTATION and TYPE_GRAVITY or TYPE_ACCELEROMETER
      */
     public static final int TYPE_3D_COMPASS_AND_DEPRECIATED_ORIENTATION = 101;
-
-    public static final int ERROR_UNSUPPORTED_TYPE = -1;
 }

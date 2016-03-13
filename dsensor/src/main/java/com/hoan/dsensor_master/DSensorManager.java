@@ -38,6 +38,8 @@ public class DSensorManager {
     public static final int TYPE_ROTATION_VECTOR_NOT_AVAILABLE = 64;
     public static final int TYPE_ORIENTATION_NOT_AVAILABLE = 128;
 
+    public static final int ERROR_UNSUPPORTED_TYPE = -1;
+
     private static SensorManager mSensorManager;
     private static DSensorEventProcessor mDSensorEventProcessor;
     private static HandlerThread mSensorThread;
@@ -110,7 +112,7 @@ public class DSensorManager {
                 return onTypeCompassFlatOnlyAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
 
             default:
-                return DProcessedSensor.ERROR_UNSUPPORTED_TYPE;
+                return ERROR_UNSUPPORTED_TYPE;
         }
     }
 
@@ -414,7 +416,7 @@ public class DSensorManager {
                                                final DProcessedEventListener dProcessedEventListener) {
         final int dSensorDirectionTypes = getCompassDirectionType(context)  | DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassRegistered dSensorDirectionTypes = " + dSensorDirectionTypes);
-        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+        int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
                 new DSensorEventListener() {
                     @Override
                     public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
@@ -441,13 +443,18 @@ public class DSensorManager {
                                         result.timestamp, result.values));
                     }
                 });
+        if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
+            || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
+            stopDSensor();
+        }
+        return flag;
     }
 
     private static int onTypeCompassFlatOnlyRegistered(Context context, int sensorRate, int historyMaxLength,
                                                        final DProcessedEventListener dProcessedEventListener) {
         final int dSensorDirectionTypes = getCompassDirectionType(context);
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassRegistered dSensorDirectionTypes = " + dSensorDirectionTypes);
-        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+        int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
                 new DSensorEventListener() {
                     @Override
                     public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
@@ -470,13 +477,18 @@ public class DSensorManager {
                                         result.timestamp, result.values));
                     }
                 });
+        if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
+                || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
+            stopDSensor();
+        }
+        return flag;
     }
 
     private static int onTypeCompassFlatOnlyAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
                                                                    final DProcessedEventListener dProcessedEventListener) {
         final int dSensorDirectionTypes = getCompassDirectionType(context) | DSensor.TYPE_DEPRECIATED_ORIENTATION;
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassFlatOnlyAndOrientationRegister dSensorDirectionTypes = " + dSensorDirectionTypes);
-        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+        int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
                 new DSensorEventListener() {
                     @Override
                     public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
@@ -504,13 +516,18 @@ public class DSensorManager {
                                         result.accuracy, result.timestamp, result.values));
                     }
                 });
+        if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
+                || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
+            stopDSensor();
+        }
+        return flag;
     }
 
     private static int onType3DCompassAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
                                                              final DProcessedEventListener dProcessedEventListener) {
         final int dSensorDirectionTypes = getCompassDirectionType(context)
                 | DSensor.TYPE_MINUS_Z_AXIS_DIRECTION | DSensor.TYPE_DEPRECIATED_ORIENTATION;
-        return DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
+        int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
                 new DSensorEventListener() {
                     @Override
                     public void onDSensorChanged(int changedDSensorTypes, DProcessedSensorEvent processedSensorEvent) {
@@ -542,6 +559,11 @@ public class DSensorManager {
                                         result.accuracy, result.timestamp, result.values));
                     }
                 });
+        if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
+                || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
+            stopDSensor();
+        }
+        return flag;
     }
 
     private static int getCompassDirectionType(Context context) {

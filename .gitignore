@@ -1,3 +1,5 @@
+gen
+bin
 .gradle
 /local.properties
 /.idea/workspace.xml
@@ -5,3 +7,10 @@
 .DS_Store
 /build
 /captures
+local.properties
+*.apk
+.*.swp
+.idea
+gen-external-apklibs
+target
+classes
