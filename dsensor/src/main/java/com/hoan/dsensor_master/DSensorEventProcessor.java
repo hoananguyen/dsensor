@@ -344,7 +344,7 @@ public class DSensorEventProcessor implements SensorEventListener {
         if ((mDSensorTypes & DSensor.TYPE_WORLD_LINEAR_ACCELERATION) != 0) {
             if (mRotationMatrix != null) {
                 mLinearAccelerationInWorldBasisHistories.add(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION,
-                        event.accuracy, event.timestamp, mLinearAcceleration.values, mRotationMatrix);
+                        event.accuracy, event.timestamp, event.values, mRotationMatrix);
                 builder.setLinearAccelerationInWorldBasis(mLinearAccelerationInWorldBasisHistories
                         .getAverageSensorEvent(DSensor.TYPE_DEVICE_LINEAR_ACCELERATION));
                 changedSensorTypes |= DSensor.TYPE_WORLD_LINEAR_ACCELERATION;
