@@ -6,6 +6,7 @@ import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.view.Surface;
 import android.view.WindowManager;
 
@@ -42,12 +43,14 @@ public class DSensorManager {
 
     private static SensorManager mSensorManager;
     private static DSensorEventProcessor mDSensorEventProcessor;
-    private static HandlerThread mSensorThread;
+    private static HandlerThread mSensorThread = null;
 
-    private DSensorManager(Context context) {
+    private DSensorManager(Context context, Handler handler) {
         Logger.d(DSensorManager.class.getSimpleName(), "constructor");
-        mSensorThread = new HandlerThread("sensor_thread");
-        mSensorThread.start();
+        if (handler == null) {
+            mSensorThread = new HandlerThread("sensor_thread");
+            mSensorThread.start();
+        }
         mSensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
     }
 
@@ -66,7 +69,27 @@ public class DSensorManager {
                                             DProcessedEventListener dProcessedEventListener) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dProcessedSensorType + ")");
         return startDProcessedSensor(context, dProcessedSensorType, SensorManager.SENSOR_DELAY_NORMAL,
-                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dProcessedEventListener);
+                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dProcessedEventListener, null);
+    }
+
+    /**
+     * Call this to receive result for one of the sensor type in DProcessedSensor. The sensor rate
+     * is default to SensorManager.SENSOR_DELAY_NORMAL and history size for averaging is
+     * DSensorEventProcessor.DEFAULT_HISTORY_SIZE
+     * @param context
+     * @param dProcessedSensorType One of the DProcessedSensor types. No bitwise OR
+     * @param dProcessedEventListener callback to receive result
+     * @param handler handler on which callbacks are posted
+     * @return REGISTERED_TYPES_AVAILABLE for supported DProcessedSensor type and device has all
+     *         sensors needed for processing. Otherwise ERROR_UNSUPPORTED_TYPE for unsupported
+     *         DProcessedSensor type or the one of the not available for needed sensor.
+     * */
+    public static int startDProcessedSensor(Context context, int dProcessedSensorType,
+                                            DProcessedEventListener dProcessedEventListener,
+                                            Handler handler) {
+        Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dProcessedSensorType + ")");
+        return startDProcessedSensor(context, dProcessedSensorType, SensorManager.SENSOR_DELAY_NORMAL,
+                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dProcessedEventListener, handler);
     }
 
     /**
@@ -83,7 +106,7 @@ public class DSensorManager {
                                             DProcessedEventListener dProcessedEventListener) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dProcessedSensorType + ")");
         return startDProcessedSensor(context, dProcessedSensorType, sensorRate,
-                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dProcessedEventListener);
+                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dProcessedEventListener, null);
     }
 
     /**
@@ -96,20 +119,20 @@ public class DSensorManager {
      *         DProcessedSensor type or the one of the not available for needed sensor.
      * */
     public static int startDProcessedSensor(Context context, int dProcessedSensorType, int sensorRate,
-                                            int historyMaxLength, DProcessedEventListener dProcessedEventListener) {
+                                            int historyMaxLength, DProcessedEventListener dProcessedEventListener, Handler handler) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dProcessedSensorType + ")");
         switch (dProcessedSensorType) {
             case DProcessedSensor.TYPE_3D_COMPASS:
-                return onTypeCompassRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener);
+                return onTypeCompassRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener, handler);
 
             case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY:
-                return onTypeCompassFlatOnlyRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener);
+                return onTypeCompassFlatOnlyRegistered(context, sensorRate, historyMaxLength, dProcessedEventListener, handler);
 
             case DProcessedSensor.TYPE_3D_COMPASS_AND_DEPRECIATED_ORIENTATION:
-                return onType3DCompassAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
+                return onType3DCompassAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener, handler);
 
             case DProcessedSensor.TYPE_COMPASS_FLAT_ONLY_AND_DEPRECIATED_ORIENTATION:
-                return onTypeCompassFlatOnlyAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener);
+                return onTypeCompassFlatOnlyAndOrientationRegister(context, sensorRate, historyMaxLength, dProcessedEventListener, handler);
 
             default:
                 return ERROR_UNSUPPORTED_TYPE;
@@ -134,7 +157,7 @@ public class DSensorManager {
                                    DSensorEventListener dSensorEventListener) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dSensorTypes + ")");
         return startDSensor(context, dSensorTypes, SensorManager.SENSOR_DELAY_NORMAL,
-                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dSensorEventListener);
+                DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dSensorEventListener, null);
     }
 
     /**
@@ -155,7 +178,7 @@ public class DSensorManager {
     public static int startDSensor(Context context, int dSensorTypes, int sensorRate,
                                    DSensorEventListener dSensorEventListener) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dSensorTypes + ", " + sensorRate + ")");
-        return startDSensor(context, dSensorTypes, sensorRate, DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dSensorEventListener);
+        return startDSensor(context, dSensorTypes, sensorRate, DSensorEventProcessor.DEFAULT_HISTORY_SIZE, dSensorEventListener, null);
     }
 
     /**
@@ -173,13 +196,13 @@ public class DSensorManager {
      *          For example TYPE_MAGNETIC_FIELD_NOT_AVAILABLE | TYPE_GYROSCOPE_NOT_AVAILABLE
      */
     public static int startDSensor(Context context, int dSensorTypes, int sensorRate, int historyMaxLength,
-                                   DSensorEventListener dSensorEventListener) {
+                                   DSensorEventListener dSensorEventListener, Handler handler) {
         Logger.d(DSensorManager.class.getSimpleName(), "startDSensor(" + dSensorTypes + ", " + sensorRate + "' " + historyMaxLength + ")");
 
         if (mSensorManager != null) {
             stopDSensor();
         }
-        new DSensorManager(context);
+        new DSensorManager(context, handler);
         boolean worldTypesRegistered = worldTypesRegistered(dSensorTypes);
         boolean directionTypesRegistered = directionTypesRegistered(dSensorTypes);
         int hasRotationVector = hasTypeRotationVector(dSensorTypes, worldTypesRegistered, directionTypesRegistered);
@@ -187,9 +210,9 @@ public class DSensorManager {
         int hasGravity = hasTypeGravity(dSensorTypes, hasLinearAcceleration, hasRotationVector,
                 worldTypesRegistered, directionTypesRegistered);
         mDSensorEventProcessor = new DSensorEventProcessor(dSensorTypes, historyMaxLength,
-                hasRotationVector, hasGravity, hasLinearAcceleration, dSensorEventListener);
+                hasRotationVector, hasGravity, hasLinearAcceleration, dSensorEventListener, handler);
         return registerListener(dSensorTypes, sensorRate, hasLinearAcceleration, hasRotationVector,
-                hasGravity, worldTypesRegistered, directionTypesRegistered);
+                hasGravity, worldTypesRegistered, directionTypesRegistered, handler);
     }
 
     /**
@@ -305,15 +328,19 @@ public class DSensorManager {
      * @param errorValue Error to return if sensorType not available.
      * @return REGISTERED_TYPES_AVAILABLE if device has the sensor, else errorValue.
      */
-    private static int registerListener(int sensorType, int sensorRate, int errorValue) {
+    private static int registerListener(int sensorType, int sensorRate, int errorValue, Handler handler) {
         Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + sensorType + ", " + sensorRate + ", " + errorValue + ")");
         Sensor sensor = mSensorManager.getDefaultSensor(sensorType);
         if (sensor == null) {
             return errorValue;
         }
 
+        if (handler == null) {
+            handler = new Handler(mSensorThread.getLooper());
+        }
+
         mSensorManager.registerListener(mDSensorEventProcessor, mSensorManager.getDefaultSensor(sensorType),
-                sensorRate, new Handler(mSensorThread.getLooper()));
+                sensorRate, handler);
         return REGISTERED_TYPES_AVAILABLE;
     }
 
@@ -338,57 +365,57 @@ public class DSensorManager {
      */
     private static int registerListener(int dSensorTypes, int sensorRate, int hasLinearAcceleration,
                                         int hasRotationVector, int hasGravity, boolean worldTypesRegistered,
-                                        boolean directionTypesRegistered) {
+                                        boolean directionTypesRegistered, Handler handler) {
         Logger.d(DSensorManager.class.getSimpleName(), "registerListener(" + dSensorTypes + ", "
                 + sensorRate + ", " + hasGravity + ", " + hasLinearAcceleration + ")");
         int result = REGISTERED_TYPES_AVAILABLE;
         if (worldTypesRegistered || directionTypesRegistered) {
             if (hasRotationVector == HAS_TYPE_ROTATION_VECTOR) {
-                result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE);
+                result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE, handler);
                 if ((dSensorTypes & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0
                         || (dSensorTypes & DSensor.TYPE_WORLD_MAGNETIC_FIELD) == 0) {
-                    result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE, handler);
                 }
 
                 if (hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
                         || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
                         || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
-                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
                 }
             } else {
-                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE, handler);
                 if (hasGravity == HAS_TYPE_GRAVITY) {
-                    result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE, handler);
                     if (hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
                             || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
                             || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
-                        result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                        result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
                     }
                 } else {
-                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
                 }
             }
         } else {
             if (hasGravity == HAS_TYPE_GRAVITY) {
-                result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE);
+                result |= registerListener(Sensor.TYPE_GRAVITY, sensorRate, TYPE_GRAVITY_NOT_AVAILABLE, handler);
                 if ((dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
                         || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
-                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
                 }
             } else if (hasGravity == TYPE_GRAVITY_NOT_AVAILABLE
                     || hasLinearAcceleration == TYPE_LINEAR_ACCELERATION_NOT_AVAILABLE
                     || (dSensorTypes & DSensor.TYPE_DEVICE_ACCELEROMETER) != 0
                     || (dSensorTypes & DSensor.TYPE_WORLD_ACCELEROMETER) == 0) {
-                result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+                result |= registerListener(Sensor.TYPE_ACCELEROMETER, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
             }
 
             if ((dSensorTypes & DSensor.TYPE_DEVICE_MAGNETIC_FIELD) != 0) {
-                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE);
+                result |= registerListener(Sensor.TYPE_MAGNETIC_FIELD, sensorRate, TYPE_MAGNETIC_FIELD_NOT_AVAILABLE, handler);
             }
 
             if ((dSensorTypes & DSensor.TYPE_ROTATION_VECTOR) != 0) {
                 if (Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO) {
-                    result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE);
+                    result |= registerListener(Sensor.TYPE_ROTATION_VECTOR, sensorRate, TYPE_ROTATION_VECTOR_NOT_AVAILABLE, handler);
                 } else {
                     result |= TYPE_ROTATION_VECTOR_NOT_AVAILABLE;
                 }
@@ -396,24 +423,24 @@ public class DSensorManager {
         }
 
         if (hasLinearAcceleration == HAS_TYPE_LINEAR_ACCELERATION) {
-            result |= registerListener(Sensor.TYPE_LINEAR_ACCELERATION, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE);
+            result |= registerListener(Sensor.TYPE_LINEAR_ACCELERATION, sensorRate, TYPE_ACCELEROMETER_NOT_AVAILABLE, handler);
         }
 
         if ((dSensorTypes & DSensor.TYPE_GYROSCOPE) != 0) {
-            result |= registerListener(Sensor.TYPE_GYROSCOPE, sensorRate, TYPE_GYROSCOPE_NOT_AVAILABLE);
+            result |= registerListener(Sensor.TYPE_GYROSCOPE, sensorRate, TYPE_GYROSCOPE_NOT_AVAILABLE, handler);
         }
 
         if ((dSensorTypes & DSensor.TYPE_DEPRECIATED_ORIENTATION) != 0) {
             //noinspection deprecation
             result |= registerListener(Sensor.TYPE_ORIENTATION, sensorRate,
-                    TYPE_ORIENTATION_NOT_AVAILABLE);
+                    TYPE_ORIENTATION_NOT_AVAILABLE, handler);
         }
 
         return result;
     }
 
     private static int onTypeCompassRegistered(Context context, int sensorRate, int historyMaxLength,
-                                               final DProcessedEventListener dProcessedEventListener) {
+                                               final DProcessedEventListener dProcessedEventListener, Handler handler) {
         final int dSensorDirectionTypes = getCompassDirectionType(context)  | DSensor.TYPE_MINUS_Z_AXIS_DIRECTION;
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassRegistered dSensorDirectionTypes = " + dSensorDirectionTypes);
         int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
@@ -442,7 +469,7 @@ public class DSensorManager {
                                 new DSensorEvent(DProcessedSensor.TYPE_3D_COMPASS, result.accuracy,
                                         result.timestamp, result.values));
                     }
-                });
+                }, handler);
         if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
             || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
             stopDSensor();
@@ -451,7 +478,7 @@ public class DSensorManager {
     }
 
     private static int onTypeCompassFlatOnlyRegistered(Context context, int sensorRate, int historyMaxLength,
-                                                       final DProcessedEventListener dProcessedEventListener) {
+                                                       final DProcessedEventListener dProcessedEventListener, Handler handler) {
         final int dSensorDirectionTypes = getCompassDirectionType(context);
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassRegistered dSensorDirectionTypes = " + dSensorDirectionTypes);
         int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
@@ -476,7 +503,7 @@ public class DSensorManager {
                                 new DSensorEvent(DProcessedSensor.TYPE_COMPASS_FLAT_ONLY, result.accuracy,
                                         result.timestamp, result.values));
                     }
-                });
+                }, handler);
         if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
                 || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
             stopDSensor();
@@ -485,7 +512,7 @@ public class DSensorManager {
     }
 
     private static int onTypeCompassFlatOnlyAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
-                                                                   final DProcessedEventListener dProcessedEventListener) {
+                                                                   final DProcessedEventListener dProcessedEventListener, Handler handler) {
         final int dSensorDirectionTypes = getCompassDirectionType(context) | DSensor.TYPE_DEPRECIATED_ORIENTATION;
         Logger.d(DSensorManager.class.getSimpleName(), "onTypeCompassFlatOnlyAndOrientationRegister dSensorDirectionTypes = " + dSensorDirectionTypes);
         int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
@@ -515,7 +542,7 @@ public class DSensorManager {
                                         ? DProcessedSensor.TYPE_3D_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
                                         result.accuracy, result.timestamp, result.values));
                     }
-                });
+                }, handler);
         if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
                 || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
             stopDSensor();
@@ -524,7 +551,7 @@ public class DSensorManager {
     }
 
     private static int onType3DCompassAndOrientationRegister(Context context, int sensorRate, int historyMaxLength,
-                                                             final DProcessedEventListener dProcessedEventListener) {
+                                                             final DProcessedEventListener dProcessedEventListener, Handler handler) {
         final int dSensorDirectionTypes = getCompassDirectionType(context)
                 | DSensor.TYPE_MINUS_Z_AXIS_DIRECTION | DSensor.TYPE_DEPRECIATED_ORIENTATION;
         int flag = DSensorManager.startDSensor(context, dSensorDirectionTypes, sensorRate, historyMaxLength,
@@ -558,7 +585,7 @@ public class DSensorManager {
                                         ? DProcessedSensor.TYPE_3D_COMPASS : DSensor.TYPE_DEPRECIATED_ORIENTATION,
                                         result.accuracy, result.timestamp, result.values));
                     }
-                });
+                }, handler);
         if ((flag & TYPE_MAGNETIC_FIELD_NOT_AVAILABLE) != 0
                 || ((flag & TYPE_GRAVITY_NOT_AVAILABLE) != 0 && (flag & TYPE_ACCELEROMETER_NOT_AVAILABLE) != 0)) {
             stopDSensor();
@@ -588,7 +615,9 @@ public class DSensorManager {
         Logger.d(DSensorManager.class.getSimpleName(), "stopDSensor");
         if (mSensorManager != null) {
             mSensorManager.unregisterListener(mDSensorEventProcessor);
-            mSensorThread.quit();
+            if (mSensorThread != null) {
+                mSensorThread.quit();
+            }
             mSensorManager = null;
         }
     }

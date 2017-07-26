@@ -98,7 +98,7 @@ public class DSensorEventProcessor implements SensorEventListener {
     private final int mHasTypeLinearAcceleration;
 
     private final DSensorEventListener mDSensorEventListener;
-    private final Handler mUIHandler = new Handler(Looper.getMainLooper());
+    private final Handler mHandler;
 
     /**
      * Constructor.
@@ -116,9 +116,10 @@ public class DSensorEventProcessor implements SensorEventListener {
      * @param dSensorEventListener Callback for processed values
      */
     public DSensorEventProcessor(int dSensorTypes, int historyMaxLength, int hasTypeRotationVector, int hasTypeGravity,
-                                 int hasTypeLinearAcceleration, DSensorEventListener dSensorEventListener) {
+                                 int hasTypeLinearAcceleration, DSensorEventListener dSensorEventListener, Handler handler) {
         Logger.d(DSensorEventProcessor.class.getSimpleName(), "constructor(" + dSensorTypes + ", " + historyMaxLength
                 + ", " + hasTypeRotationVector + ", " + hasTypeGravity + ", " + hasTypeLinearAcceleration + ")");
+        mHandler = (handler != null) ? handler : new Handler(Looper.getMainLooper());
         mDSensorTypes = dSensorTypes;
         mDSensorEventListener = dSensorEventListener;
         mHasTypeRotationVector = hasTypeRotationVector;
@@ -235,7 +236,7 @@ public class DSensorEventProcessor implements SensorEventListener {
         }
 
         if (changedSensorTypes != 0) {
-            mUIHandler.post(new Runnable() {
+            mHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     mDSensorEventListener.onDSensorChanged(changedSensorTypes, builder.build());
