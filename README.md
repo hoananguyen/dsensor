@@ -2,7 +2,7 @@
 
 <b>USAGE</b>
 
-Should use dsensor-lib instead. I will soon delete this repo.
+<b>Should use dsensor-lib instead. I will soon delete this repo.</b>
 
 Call one of the <code>DSensorManager startDProcessedSensor</code> or <code>startDSensor</code> methods in <code>onResume</code> and <code>stopDSensor</code> in <code>onPause</code>
 
